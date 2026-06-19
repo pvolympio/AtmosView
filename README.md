@@ -1,6 +1,6 @@
-# AtmosView - V4 Evolução Científica e Comparação de Fontes 🌤️
+# AtmosView - V5 Produto Final, Autenticação, Relatórios PDF e PWA 🌤️
 
-**AtmosView** é uma plataforma web profissional de análise meteorológica inteligente focada em cidades brasileiras. O sistema foi desenvolvido com uma arquitetura moderna e de responsabilidade única, utilizando cache inteligente e persistência de dados para auditar consultas climáticas, avaliar o risco ecológico de regiões do Brasil, realizar análises históricas de tendências térmicas, executar predições automatizadas utilizando algoritmos de Inteligência Artificial e realizar cruzamento climatológico de alta precisão comparando dados de reanálise por satélite e modelos globais com medições reais obtidas em estações terrestres de solo brasileiras.
+**AtmosView** é uma plataforma web profissional de análise meteorológica inteligente focada em cidades brasileiras. O sistema foi desenvolvido com uma arquitetura moderna e de responsabilidade única, utilizando cache inteligente e persistência de dados para auditar consultas climáticas, avaliar o risco ecológico de regiões do Brasil, realizar análises históricas de tendências térmicas, executar predições automatizadas utilizando algoritmos de Inteligência Artificial, realizar cruzamento de dados científicos e exportar relatórios customizados com controle de alertas em tempo real.
 
 ---
 
@@ -8,31 +8,20 @@
 
 O sistema é dividido em três camadas principais, seguindo os princípios de responsabilidade única e arquitetura limpa:
 
-1. **Frontend SPA (React + Vite + Tailwind CSS):**
-   - Roteamento nativo de **8 Páginas**: `Home`, `Dashboard` (tempo real), `Histórico` (tendências/comparações), `IA` (predições preditivas), `Comparação de Fontes` (cruzamento científico V4), `Estações` (localização da rede de solo), `Consultas` (histórico de consultas salvas) e `Sobre`.
-   - **32 Componentes de UI** modulares e reutilizáveis, incluindo:
-     - Componentes Científicos V4 (`SourceSelector`, `SourceComparisonTable`, `MultiSourceTemperatureChart`, `MultiSourceRainChart`, `DataAvailabilityCard`, `DivergenceAnalysisCard`).
-     - Componentes de Inteligência Artificial (`PredictionCard`, `ModelStatusCard`, `MetricsTable`, `FeatureImportanceChart`).
-     - Autocomplete de cidades brasileiras (`SearchCity`, `HistoricalSearch`).
-     - Visores climáticos dinâmicos (`WeatherOverview`, `WeatherCard`, `ClimateSummary`).
-     - Indicador circular e breakdown de risco (`RiskBadge`, `RiskExplanation`).
-     - Gráficos comparativos e de séries do Recharts.
-     - Integração de mapas Leaflet Dark (`WeatherMap`, `StationsPage` com polylines dinâmicas de distância).
-     - Carregamento e erros (`LoadingState`, `ErrorState`).
+1. **Frontend SPA (React + Vite + Tailwind CSS + PWA):**
+   - Roteamento nativo de **11 Páginas**: `Home`, `Dashboard` (tempo real), `Histórico` (tendências/comparações), `IA` (predições), `Comparação de Fontes`, `Estações`, `Consultas` (histórico de consultas salvas), `Login` (V5 auth), `Perfil` (configurações/alertas V5), `Relatórios` (geração PDF V5) e `Sobre`.
+   - **PWA Instalável**: Configurado com Manifest, Service Worker e ícone vetorial (`icon.svg`) para suporte offline e caching inteligente de assets estáticos.
+   - **Sistema de Alertas Ativos**: No momento de qualquer consulta meteorológica, o frontend compara os dados recebidos com as preferências de alertas do usuário e exibe banners imediatos de atenção na tela, persistindo-os na base de dados.
    
-2. **Backend (FastAPI + HTTPX):**
+2. **Backend (FastAPI + HTTPX + SQLAlchemy + ReportLab):**
    - Endpoints REST assíncronos e não-bloqueantes.
-   - **Abstração de Provedores Climáticos (`weather_providers`)**: Camada extensível contendo `OpenMeteoProvider`, `NasaPowerProvider`, `InmetProvider` e `MockProvider` para simulações e testes locais.
-   - **Serviço de Qualidade de Dados (`data_quality_service.py`)**: Analisa integridade, lacunas de datas, completude percentual e outliers de dados climáticos para emitir um relatório de QA/QC avaliado em "Boa", "Parcial" ou "Fraca".
-   - **Cálculo de Estação mais Próxima (Haversine)**: Compara coordenadas geográficas da busca urbana com a base de estações do INMET para calcular a distância em km da estação de solo mais próxima.
-   - **Índice Climático de Risco (ICR)**: Classificação de 0 a 10 baseada em temperatura, umidade, vento, chuva e pressão.
-   - **Modelagem Preditiva Supervisionada (V3)**: Pipeline composto por `dataset_builder.py`, `training_service.py` (treino de Random Forest) e `inference_service.py`.
-   - **Regressão Linear Térmica**: Calcula o coeficiente angular (slope) de mínimos quadrados nas séries históricas para classificar tendências térmicas.
-   
-3. **Banco de Dados & Cache (PostgreSQL + Redis):**
-   - **PostgreSQL**: Persiste buscas, séries diárias, comparações de períodos, auditorias de fontes, relatórios de qualidade e metadados de modelos de IA.
-   - **Redis & Local DB Caching**: Caches de forecast (5 min), séries históricas (1h), geocoding (24h) e autocompletes resolvidos pelo cache do banco.
-   - **Resiliência Nativa**: Em caso de ausência do PostgreSQL/Redis, o backend ativa automaticamente um banco local **SQLite** (`backend/atmosview.db`) e continua operando perfeitamente.
+   - **Autenticação JWT Local**: Proteção de rotas com token Bearer, criptografia de senhas usando `pbkdf2_sha256` para portabilidade robusta e auto-seeding de usuário administrador padrão.
+   - **Gerador de Relatórios em PDF (`pdf_service.py`)**: Utiliza `ReportLab` para desenhar PDFs formatados sob demanda (tabelas de métricas estruturadas, recomendações de ICR, tendências angulares e previsões de IA) transmitidos via `StreamingResponse`.
+   - **Abstração de Provedores Climáticos (`weather_providers`)**: Camada extensível contendo `OpenMeteoProvider`, `NasaPowerProvider`, `InmetProvider` e `MockProvider`.
+
+3. **Banco de Dados & Cache (PostgreSQL + Redis + SQLite Fallback):**
+   - **PostgreSQL**: Persiste buscas, séries diárias, comparações, relatórios de qualidade, usuários, cidades favoritas e alertas climáticos.
+   - **Resiliência e Auto-Healing**: Em caso de ausência do PostgreSQL/Redis, o backend ativa automaticamente um banco local **SQLite** (`backend/atmosview.db`), cria e atualiza as tabelas em tempo de execução e continua operando de forma transparente.
 
 ---
 
@@ -42,71 +31,52 @@ O sistema é dividido em três camadas principais, seguindo os princípios de re
 atmosview/
 ├── docker-compose.yml       # Orquestrador oficial de containers
 ├── .env                     # Variáveis de ambiente configuradas
-├── README.md                # Documentação da V4
+├── README.md                # Documentação da V5
 ├── backend/                 # API FastAPI (Python)
 │   ├── app/
-│   │   ├── main.py          # Seeding de fontes/estações no startup e Auto-healing
+│   │   ├── main.py          # Seeding de fontes, estações e admin no startup
 │   │   ├── database.py      # SQLite Fallback Integrado
-│   │   ├── models.py        # Tabelas PostgreSQL/SQLite atualizadas para V4
-│   │   ├── schemas.py       # Schemas Pydantic atualizados para V4
-│   │   ├── weather_providers/  # Abstração de Fontes Climáticas (V4)
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py
-│   │   │   ├── open_meteo.py
-│   │   │   ├── nasa_power.py
-│   │   │   ├── inmet.py
-│   │   │   └── mock.py
+│   │   ├── models.py        # Tabelas PostgreSQL/SQLite atualizadas para V5 (User, UserFavorite, WeatherAlert)
+│   │   ├── schemas.py       # Schemas Pydantic atualizados para V5
 │   │   ├── services/
-│   │   │   ├── data_quality_service.py  # Análise de consistência e completude
-│   │   │   └── weather.py   # Seeding de estações, Haversine e Comparador Científico
+│   │   │   ├── auth_service.py # Lógica de login, criptografia pbkdf2 e validação JWT
+│   │   │   ├── pdf_service.py  # Serviço ReportLab de montagem do PDF
+│   │   │   └── weather.py
 │   │   └── routers/
-│   │       └── weather.py   # Endpoints /stations/nearest e /weather/source-comparison
+│   │       ├── auth.py      # Rotas de cadastro, login, perfil, favoritos e alertas
+│   │       ├── reports.py   # Rota de geração de relatório PDF
+│   │       └── weather.py
+│   └── tests/
+│       └── test_app.py      # Suíte de testes automatizados do backend
 └── frontend/                # SPA React
+    ├── public/
+    │   ├── manifest.json    # Metadados do PWA
+    │   └── sw.js            # Service Worker de caching e offline
     └── src/
-        ├── App.jsx          # Roteamento e Menu Principal V4
+        ├── App.jsx          # Roteamento, menu principal e alertas ativos V5
         ├── services/
-        │   └── api.js       # Endpoints integrados do backend
+        │   └── api.js       # Axios com interceptor de tokens JWT
         ├── pages/
-        │   ├── SourceComparisonPage.jsx # Cruzamento de dados de satélite e solo
-        │   ├── StationsPage.jsx         # Mapa de estações terrestres e distâncias
-        │   └── ... (outras páginas)
-        └── components/
-            └── Scientific/  # Componentes visuais para V4
-                ├── SourceSelector.jsx
-                ├── SourceComparisonTable.jsx
-                ├── MultiSourceTemperatureChart.jsx
-                ├── MultiSourceRainChart.jsx
-                ├── DataAvailabilityCard.jsx
-                └── DivergenceAnalysisCard.jsx
+        │   ├── LoginPage.jsx   # Portal de login e cadastro
+        │   ├── ProfilePage.jsx # Sliders de alertas e gerenciamento de favoritos
+        │   ├── ReportsPage.jsx # Geração e download ágil de PDFs climáticos
+        │   ├── MethodologyPage.jsx # Detalhamento das fórmulas (Haversine/ICR)
+        │   └── ...
 ```
 
 ---
 
 ## 🔬 Fontes de Dados, Limitações e Metodologia Científica
 
-### Fontes de Dados Utilizadas
-1.  **Open-Meteo (Modelos Globais)**: Utiliza dados de modelos de previsão numérica e reanálise (como o ERA5 do ECMWF). Fornece dados imediatos para qualquer coordenada global.
-2.  **NASA POWER (Satélite / Reanálise)**: Projeto da NASA voltado para dados climatológicos mundiais baseados em sensoriamento remoto por satélite e reanálise de modelos globais.
-3.  **INMET (Rede Física de Solo)**: Instituto Nacional de Meteorologia do Brasil. Fornece dados reais medidos *in situ* por termômetros, pluviômetros e anemômetros instalados em estações de superfície.
-
-### Limitações de Cada Fonte
--   **Open-Meteo**: Por ser um modelo numérico suavizado em grade, pode não detectar microclimas urbanos específicos ou efeitos locais de vales e montanhas.
--   **NASA POWER**: Resolução de grade relativamente grossa (~50km). Além disso, os dados possuem um tempo de consolidação natural de cerca de 4 a 5 dias, impossibilitando consultas em tempo real imediato.
--   **INMET**: Apresenta interrupções e lacunas de dados devido a instabilidades na rede de comunicação GSM/satélite das estações ou por sensores em manutenção física.
-
-### Metodologia de Comparação e Importância Acadêmica
-O sistema calcula a distância de **Haversine** entre as coordenadas da cidade buscada e todas as estações do INMET armazenadas no banco. A estação operante mais próxima é selecionada para consulta. 
-
-Os dados diários são coletados para o período solicitado em todas as três fontes. A divergência percentual e absoluta é calculada tomando como referência a reanálise do Open-Meteo contra a medição física do INMET e da NASA.
-
-Esta metodologia é de extrema importância para as **Ciências Atmosféricas** e **Engenharia Meteorológica**, pois permite avaliar a confiabilidade dos modelos de satélite em solo brasileiro (especialmente nas regiões tropicais, onde a modelagem de chuva apresenta alta complexidade).
+-   **ICR (Índice de Risco Climático)**: Algoritmo que pontua o perigo regional de 0 a 10 avaliando Calores Extremos, Securas de Ar, Volumes Pluviométricos, Rajadas de Vento e Sistemas Ciclônicos.
+-   **Fórmula de Haversine**: Equação trigonométrica para calcular a distância esférica entre coordenadas terrestres e encontrar a estação INMET física de solo mais próxima da consulta urbana.
+-   **NASA POWER & Open-Meteo**: Fontes globais de dados e reanálise meteorológica que completam medições em tempo real e fornecem cobertura em regiões descobertas por estações.
 
 ---
 
 ## 🚀 Como Executar o Projeto
 
 ### Opção A: Docker Compose (Recomendado)
-Certifique-se de que o Docker Desktop esteja instalado.
 1. No diretório raiz, crie o `.env`:
    ```bash
    cp .env.example .env
@@ -119,19 +89,37 @@ Certifique-se de que o Docker Desktop esteja instalado.
    - **Interface Web**: [http://localhost:5173](http://localhost:5173)
    - **Swagger da API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+### Opção B: Execução Local
+1. **Backend**:
+   ```bash
+   cd backend
+   python -m pip install -r requirements.txt
+   $env:PYTHONPATH="."; python -m uvicorn app.main:app --reload
+   ```
+2. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
 ---
 
-## 🧪 Como Testar Cada Rota e o Frontend (V4)
+## 🧪 Como Testar e Validar
 
-### Testes das Rotas do Backend (API)
-Acesse a página do Swagger em `http://localhost:8000/docs` e execute os seguintes cenários:
+### Testes Automatizados (Backend)
+No diretório `backend`, você pode rodar os testes utilizando pytest (com banco de dados SQLite em memória isolado):
+```bash
+$env:PYTHONPATH="backend"; python -m pytest backend/tests
+```
 
-1.  **GET `/api/stations/nearest`**:
-    - Parâmetros: `lat=-23.5489`, `lon=-46.6388` (coordenadas de São Paulo).
-    - Retorna a estação "SÃO PAULO - MIRANTE (A701)" com distância < 10 km.
-2.  **GET `/api/weather/source-comparison`**:
-    - Parâmetros: `city=Sao Paulo`, `start_date=2026-06-01`, `end_date=2026-06-12`.
-    - Retorna o JSON estruturado comparando as três fontes com divergências e relatórios de controle de qualidade.
+### Credenciais Padrão de Demonstração
+Para validar a autenticação V5 imediatamente, utilize o usuário administrador pré-semeado:
+- **E-mail**: `admin@atmosview.com`
+- **Senha**: `admin123`
+
+### Validação do PWA
+Abra a aplicação no navegador (Google Chrome ou Edge) e repare no ícone de "Instalar" (computador ou celular com seta para baixo) na barra de endereços, permitindo rodar a aplicação em janela própria com atalho no desktop.
 
 ### Testes do Frontend (Interface)
 1.  **Comparação de Fontes**: Navegue pelo menu superior até "Comparação de Fontes".
