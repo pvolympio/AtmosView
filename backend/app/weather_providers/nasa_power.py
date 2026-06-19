@@ -29,7 +29,7 @@ class NasaPowerProvider(BaseProvider):
         # NASA POWER does not support forecasting.
         return {}
 
-    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str, db: Optional[Any] = None) -> List[Dict[str, Any]]:
         # Formata datas de YYYY-MM-DD para YYYYMMDD
         start_formatted = start_date.replace("-", "")
         end_formatted = end_date.replace("-", "")

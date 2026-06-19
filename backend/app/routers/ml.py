@@ -17,51 +17,6 @@ from app.models import MLModel, MLTrainingRun
 router = APIRouter(prefix="/ml", tags=["machine-learning"])
 logger = logging.getLogger(__name__)
 
-async def resolve_city(city_query: str, db: Session):
-    """Helper to geocode a Brazilian city, matching weather.py implementation"""
-    city_normalized = city_query.lower().strip()
-    search_parts = city_normalized.split(",")
-    search_query = search_parts[0].strip()
-    state_query = search_parts[1].strip() if len(search_parts) > 1 else None
-    
-    # 1. Try to resolve coordinates from local DB tables (SearchHistory / HistoricalQuery)
-    # to avoid external geocoding calls and bypass timeout risks.
-    from app.models import SearchHistory, HistoricalQuery
-    from app.schemas import CitySearchResult
-    
-    db_city = db.query(SearchHistory).filter(SearchHistory.city_name.ilike(search_query)).first()
-    if not db_city:
-        db_city = db.query(HistoricalQuery).filter(HistoricalQuery.city_name.ilike(search_query)).first()
-        
-    if db_city:
-        logger.info(f"Resolved city '{search_query}' from database cache: ({db_city.latitude}, {db_city.longitude})")
-        return CitySearchResult(
-            name=db_city.city_name,
-            latitude=db_city.latitude,
-            longitude=db_city.longitude,
-            state=db_city.state,
-            country=db_city.country
-        )
-    
-    # 2. Cache/DB Miss: Fall back to geocoding search API
-    cities = await weather_service.search_cities(search_query)
-    if not cities:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Não encontramos nenhuma cidade brasileira com o nome '{city_query}'."
-        )
-        
-    selected_city = None
-    if state_query:
-        for c in cities:
-            if c.state and c.state.lower().strip() == state_query:
-                selected_city = c
-                break
-                
-    if not selected_city:
-        selected_city = cities[0]
-        
-    return selected_city
 
 @router.post("/train", response_model=MLTrainResponse)
 async def train_ml_models(
@@ -73,7 +28,7 @@ async def train_ml_models(
     daily weather data, splits it, trains RandomForest models and evaluates them.
     """
     logger.info(f"Received ML training request for city: '{request.city}'")
-    city = await resolve_city(request.city, db)
+    city = await weather_service.resolve_city(request.city, db)
     
     years = request.period_years or 2
     if not (1 <= years <= 5):
@@ -107,7 +62,7 @@ async def predict_weather(
     Predicts rain, heavy rain, and risk level for tomorrow based on today's weather indicators.
     Uses trained Random Forest models if available, otherwise falls back to rule-based logic.
     """
-    city_resolved = await resolve_city(city, db)
+    city_resolved = await weather_service.resolve_city(city, db)
     
     # Fetch today's current weather dashboard details
     weather_data = await weather_service.get_weather(
@@ -150,7 +105,7 @@ async def get_ml_status(
     """
     Queries the database to fetch metadata on trained models and runs for a city.
     """
-    city_resolved = await resolve_city(city, db)
+    city_resolved = await weather_service.resolve_city(city, db)
     
     models = db.query(MLModel).filter(MLModel.city_name == city_resolved.name).all()
     training_runs = db.query(MLTrainingRun).filter(MLTrainingRun.city_name == city_resolved.name).count()

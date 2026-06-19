@@ -9,10 +9,55 @@ from app.schemas import (
 from app.services.risk_service import risk_service
 from app.services.report_service import report_service
 from app.services.historical_report_service import historical_report_service
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 class WeatherService:
+    async def resolve_city(self, city_query: str, db: Session) -> CitySearchResult:
+        """Helper to geocode a Brazilian city, using local database caching first"""
+        city_normalized = city_query.lower().strip()
+        search_parts = city_normalized.split(",")
+        search_query = search_parts[0].strip()
+        state_query = search_parts[1].strip() if len(search_parts) > 1 else None
+        
+        from app.models import SearchHistory, HistoricalQuery
+        
+        db_city = db.query(SearchHistory).filter(SearchHistory.city_name.ilike(search_query)).first()
+        if not db_city:
+            db_city = db.query(HistoricalQuery).filter(HistoricalQuery.city_name.ilike(search_query)).first()
+            
+        if db_city:
+            logger.info(f"Resolved city '{search_query}' from database cache: ({db_city.latitude}, {db_city.longitude})")
+            return CitySearchResult(
+                name=db_city.city_name,
+                latitude=db_city.latitude,
+                longitude=db_city.longitude,
+                state=db_city.state,
+                country=db_city.country
+            )
+            
+        # Fall back to Geocoding Search API
+        cities = await self.search_cities(search_query)
+        if not cities:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Não encontramos nenhuma cidade brasileira com o nome '{city_query}'."
+            )
+            
+        selected_city = None
+        if state_query:
+            for c in cities:
+                if c.state and c.state.lower().strip() == state_query:
+                    selected_city = c
+                    break
+                    
+        if not selected_city:
+            selected_city = cities[0]
+            
+        return selected_city
+
     async def search_cities(self, query: str) -> List[CitySearchResult]:
         if not query or len(query.strip()) < 2:
             return []

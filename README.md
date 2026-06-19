@@ -1,27 +1,30 @@
-# AtmosView - V5 Produto Final, Autenticação, Relatórios PDF e PWA 🌤️
+# AtmosView — Plataforma Full-Stack de Inteligência Climatológica e Riscos Ambientais (V5) 🌤️
 
-**AtmosView** é uma plataforma web profissional de análise meteorológica inteligente focada em cidades brasileiras. O sistema foi desenvolvido com uma arquitetura moderna e de responsabilidade única, utilizando cache inteligente e persistência de dados para auditar consultas climáticas, avaliar o risco ecológico de regiões do Brasil, realizar análises históricas de tendências térmicas, executar predições automatizadas utilizando algoritmos de Inteligência Artificial, realizar cruzamento de dados científicos e exportar relatórios customizados com controle de alertas em tempo real.
+**AtmosView** é uma plataforma meteorológica de nível profissional e industrial focada em municípios brasileiros. O projeto foi projetado do zero sob os preceitos de **Clean Architecture**, alta performance, segurança robusta e Inteligência Artificial integrada.
+
+O sistema atua unificando e auditando dados climatológicos de múltiplas fontes científicas (satélites e sensores terrestres), cruzando previsões globais com medições reais e gerando predições supervisionadas por IA e relatórios vetoriais para subsidiar decisões de Defesa Civil, Planejamento Urbano e Agronegócio.
 
 ---
 
-## 🏗️ Arquitetura do Sistema
+## 🏗️ Arquitetura e Engenharia do Sistema
 
-O sistema é dividido em três camadas principais, seguindo os princípios de responsabilidade única e arquitetura limpa:
+O AtmosView é estruturado em três camadas com responsabilidades bem definidas:
 
-1. **Frontend SPA (React + Vite + Tailwind CSS + PWA):**
-   - Roteamento nativo de **11 Páginas**: `Home`, `Dashboard` (tempo real), `Histórico` (tendências/comparações), `IA` (predições), `Comparação de Fontes`, `Estações`, `Consultas` (histórico de consultas salvas), `Login` (V5 auth), `Perfil` (configurações/alertas V5), `Relatórios` (geração PDF V5) e `Sobre`.
-   - **PWA Instalável**: Configurado com Manifest, Service Worker e ícone vetorial (`icon.svg`) para suporte offline e caching inteligente de assets estáticos.
-   - **Sistema de Alertas Ativos**: No momento de qualquer consulta meteorológica, o frontend compara os dados recebidos com as preferências de alertas do usuário e exibe banners imediatos de atenção na tela, persistindo-os na base de dados.
-   
-2. **Backend (FastAPI + HTTPX + SQLAlchemy + ReportLab):**
-   - Endpoints REST assíncronos e não-bloqueantes.
-   - **Autenticação JWT Local**: Proteção de rotas com token Bearer, criptografia de senhas usando `pbkdf2_sha256` para portabilidade robusta e auto-seeding de usuário administrador padrão.
-   - **Gerador de Relatórios em PDF (`pdf_service.py`)**: Utiliza `ReportLab` para desenhar PDFs formatados sob demanda (tabelas de métricas estruturadas, recomendações de ICR, tendências angulares e previsões de IA) transmitidos via `StreamingResponse`.
-   - **Abstração de Provedores Climáticos (`weather_providers`)**: Camada extensível contendo `OpenMeteoProvider`, `NasaPowerProvider`, `InmetProvider` e `MockProvider`.
+1. **Frontend SPA & PWA (React + Vite + Tailwind CSS + PWA)**:
+   - Roteamento nativo cobrindo **11 Páginas**: `Home` (nova landing page premium), `Dashboard` (tempo real), `Histórico` (tendências/comparações), `IA` (predições), `Comparação de Fontes`, `Estações`, `Consultas` (histórico de buscas), `Login` (V5 auth), `Perfil` (configurações/alertas), `Relatórios` (gerador PDF) e `Sobre`.
+   - **PWA Instalável**: Configurado com Service Worker e Web App Manifest, permitindo a instalação nativa do app em dispositivos móveis e desktop, além de caching local de assets estáticos.
+   - **Sistema de Alertas Ativos**: Interceptação em tempo real de limiares climáticos (vento, calor, chuva, umidade e risco) parametrizados pelo usuário logado, disparando banners flutuantes de atenção e persistindo notificações no banco.
 
-3. **Banco de Dados & Cache (PostgreSQL + Redis + SQLite Fallback):**
-   - **PostgreSQL**: Persiste buscas, séries diárias, comparações, relatórios de qualidade, usuários, cidades favoritas e alertas climáticos.
-   - **Resiliência e Auto-Healing**: Em caso de ausência do PostgreSQL/Redis, o backend ativa automaticamente um banco local **SQLite** (`backend/atmosview.db`), cria e atualiza as tabelas em tempo de execução e continua operando de forma transparente.
+2. **Backend Assíncrono (FastAPI + SQLAlchemy + ReportLab)**:
+   - Endpoints REST assíncronos não-bloqueantes em Python.
+   - **Autenticação JWT Local**: Segurança no controle de sessão com token Bearer, criptografia de senhas baseada no algoritmo portátil `pbkdf2_sha256` e seeding automático de administrador padrão no startup.
+   - **Geração de PDF (ReportLab)**: Emissão sob demanda de relatórios vetoriais direto no buffer de memória, evitando gravação em disco no servidor e agilizando downloads via `StreamingResponse`.
+   - **Abstração de Provedores (`weather_providers`)**: Camada extensível com polimorfismo contendo `OpenMeteoProvider`, `NasaPowerProvider`, `InmetProvider` (estações terrestres) e `MockProvider` para simulações locais.
+
+3. **Banco de Dados & Cache (PostgreSQL + Redis + SQLite Auto-Healing)**:
+   - **PostgreSQL**: Persistência relacional de históricos de busca, séries diárias completas, usuários, cidades favoritas e alertas climáticos.
+   - **Redis**: Armazenamento em cache de queries de geolocalização e respostas de dados meteorológicos para otimização de tráfego e latência.
+   - **Resiliência e Auto-Healing (SQLite Fallback)**: Em caso de indisponibilidade do PostgreSQL/Redis, o backend ativa a autocura e chaveia de forma transparente para um banco de dados local **SQLite** (`atmosview.db`), recriando todas as tabelas em tempo de execução e continuando a operar sem interrupções.
 
 ---
 
@@ -108,10 +111,21 @@ atmosview/
 ## 🧪 Como Testar e Validar
 
 ### Testes Automatizados (Backend)
-No diretório `backend`, você pode rodar os testes utilizando pytest (com banco de dados SQLite em memória isolado):
-```bash
-$env:PYTHONPATH="backend"; python -m pytest backend/tests
-```
+Você pode rodar a suíte de testes unitários e de integração utilizando pytest (com banco de dados SQLite em memória isolado de forma automática):
+
+- **Windows (PowerShell)**:
+  ```powershell
+  $env:PYTHONPATH="backend"; python -m pytest backend/tests
+  ```
+- **Windows (CMD)**:
+  ```cmd
+  set PYTHONPATH=backend
+  python -m pytest backend/tests
+  ```
+- **Linux / macOS**:
+  ```bash
+  PYTHONPATH=backend python -m pytest backend/tests
+  ```
 
 ### Credenciais Padrão de Demonstração
 Para validar a autenticação V5 imediatamente, utilize o usuário administrador pré-semeado:

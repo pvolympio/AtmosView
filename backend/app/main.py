@@ -58,7 +58,16 @@ try:
         db.commit()
         logger.info("Weather sources seeded successfully.")
         
-        # Dispara carga das estações meteorológicas do INMET
+        # Dispara carga das estações meteorológicas do INMET em sessão dedicada
+        async def run_seeding():
+            async_db = SessionLocal()
+            try:
+                await weather_service.seed_stations(async_db)
+            except Exception as se_inner:
+                logger.error(f"Error seeding stations in background: {se_inner}")
+            finally:
+                async_db.close()
+
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -66,9 +75,9 @@ try:
             asyncio.set_event_loop(loop)
             
         if loop.is_running():
-            loop.create_task(weather_service.seed_stations(db))
+            loop.create_task(run_seeding())
         else:
-            loop.run_until_complete(weather_service.seed_stations(db))
+            loop.run_until_complete(run_seeding())
             
         # Seed de usuário admin padrão para testes
         from app.models import User

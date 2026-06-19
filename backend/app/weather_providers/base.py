@@ -28,7 +28,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str, db: Optional[Any] = None) -> List[Dict[str, Any]]:
         """
         Fetch historical weather daily logs between start_date and end_date (YYYY-MM-DD).
         Returns a list of dicts:

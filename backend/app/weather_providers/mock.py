@@ -55,7 +55,7 @@ class MockProvider(BaseProvider):
             }
         }
 
-    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str, db: Optional[Any] = None) -> List[Dict[str, Any]]:
         start = datetime.strptime(start_date, "%Y-%m-%d")
         end = datetime.strptime(end_date, "%Y-%m-%d")
         days = (end - start).days + 1

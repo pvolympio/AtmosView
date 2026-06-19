@@ -15,50 +15,6 @@ router = APIRouter(prefix="", tags=["weather"])
 logger = logging.getLogger(__name__)
 
 
-async def resolve_city(city_query: str, db: Session):
-    """Helper to geocode a Brazilian city, using local database caching first"""
-    city_normalized = city_query.lower().strip()
-    search_parts = city_normalized.split(",")
-    search_query = search_parts[0].strip()
-    state_query = search_parts[1].strip() if len(search_parts) > 1 else None
-    
-    # 1. Try resolving coordinates from local database tables to avoid timeouts
-    from app.models import SearchHistory, HistoricalQuery
-    from app.schemas import CitySearchResult
-    
-    db_city = db.query(SearchHistory).filter(SearchHistory.city_name.ilike(search_query)).first()
-    if not db_city:
-        db_city = db.query(HistoricalQuery).filter(HistoricalQuery.city_name.ilike(search_query)).first()
-        
-    if db_city:
-        logger.info(f"Resolved city '{search_query}' from database cache: ({db_city.latitude}, {db_city.longitude})")
-        return CitySearchResult(
-            name=db_city.city_name,
-            latitude=db_city.latitude,
-            longitude=db_city.longitude,
-            state=db_city.state,
-            country=db_city.country
-        )
-        
-    # 2. Cache/DB Miss: Fall back to Geocoding Search API
-    cities = await weather_service.search_cities(search_query)
-    if not cities:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Não encontramos nenhuma cidade brasileira com o nome '{city_query}'."
-        )
-        
-    selected_city = None
-    if state_query:
-        for c in cities:
-            if c.state and c.state.lower().strip() == state_query:
-                selected_city = c
-                break
-                
-    if not selected_city:
-        selected_city = cities[0]
-        
-    return selected_city
 
 @router.get("/cities/search", response_model=List[CitySearchResult])
 async def search_cities(name: str = Query(..., min_length=2)):
@@ -86,7 +42,7 @@ async def get_weather_dashboard(
 
     # 2. Cache Miss: Resolve coordinates
     logger.info(f"Redis Cache miss for dashboard query: '{city_query}'. Resolving coordinates...")
-    selected_city = await resolve_city(city, db)
+    selected_city = await weather_service.resolve_city(city, db)
     
     # 3. Fetch weather forecast details from Open-Meteo
     weather_data = await weather_service.get_weather(
@@ -182,7 +138,7 @@ async def get_weather_history(
 
     # 2. Cache Miss: Geocode City coordinates
     logger.info(f"Redis Cache miss for historical weather query: '{cache_key}'. Resolving coordinates...")
-    selected_city = await resolve_city(city, db)
+    selected_city = await weather_service.resolve_city(city, db)
 
     # 3. Query historical weather series from Open-Meteo archive
     historical_data = await weather_service.get_historical_weather(
@@ -301,7 +257,7 @@ async def get_weather_compare(
 
     # 2. Cache Miss: Resolve coordinates
     logger.info(f"Redis Cache miss for period comparison: '{cache_key}'. Resolving coordinates...")
-    selected_city = await resolve_city(city, db)
+    selected_city = await weather_service.resolve_city(city, db)
 
     # 3. Calculate period comparison
     comparison_data = await weather_service.compare_periods(
@@ -399,7 +355,7 @@ async def get_weather_source_comparison(
         )
 
     # 1. Resolve coordenadas da cidade
-    selected_city = await resolve_city(city, db)
+    selected_city = await weather_service.resolve_city(city, db)
     
     # 2. Verifica cache Redis
     city_normalized = city.lower().strip()

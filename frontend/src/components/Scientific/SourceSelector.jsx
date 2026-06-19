@@ -34,7 +34,7 @@ export default function SourceSelector({ sources }) {
                   quality.quality_grade === 'Boa' ? 'bg-emerald-500/10 text-emerald-400' :
                   quality.quality_grade === 'Parcial' ? 'bg-amber-500/10 text-amber-400' : 'bg-rose-500/10 text-rose-400'
                 }`}>
-                  {quality.completeness_percentage}% ({quality.quality_grade})
+                  {quality.completeness_percentage !== undefined ? `${quality.completeness_percentage}%` : 'N/A'} ({quality.quality_grade || 'Sem dados'})
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 leading-snug flex items-start gap-1">

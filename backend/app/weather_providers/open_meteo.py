@@ -130,7 +130,7 @@ class OpenMeteoProvider(BaseProvider):
                 logger.error(f"Error fetching forecast from Open-Meteo: {e}")
                 raise
 
-    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str, db: Optional[Any] = None) -> List[Dict[str, Any]]:
         url = "https://archive-api.open-meteo.com/v1/archive"
         params = {
             "latitude": lat,

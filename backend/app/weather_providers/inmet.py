@@ -37,9 +37,12 @@ class InmetProvider(BaseProvider):
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
 
-    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    async def get_historical_data(self, lat: float, lon: float, start_date: str, end_date: str, db: Optional[Any] = None) -> List[Dict[str, Any]]:
         # 1. Busca estação mais próxima no banco de dados
-        db = SessionLocal()
+        close_db_after = False
+        if db is None:
+            db = SessionLocal()
+            close_db_after = True
         nearest_station = None
         min_distance = float('inf')
         
@@ -53,7 +56,8 @@ class InmetProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error querying stations from database: {e}")
         finally:
-            db.close()
+            if close_db_after:
+                db.close()
             
         if not nearest_station:
             logger.warning("No physical weather stations found in database.")
