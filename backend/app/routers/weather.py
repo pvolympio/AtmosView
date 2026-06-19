@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
 from app.schemas import (
-    CitySearchResult, WeatherResponse, HistoricalQueryResponse, ComparisonResultResponse
+    CitySearchResult, WeatherResponse, HistoricalQueryResponse, ComparisonResultResponse,
+    WeatherStationResponse, SourceComparisonResponse
 )
 from app.services.weather import weather_service
 from app.services.cache import cache_service
@@ -339,3 +340,95 @@ async def get_weather_compare(
     cache_service.set(cache_key, comparison_data, ttl=3600)
 
     return comparison_data
+
+
+@router.get("/stations/nearest", response_model=WeatherStationResponse)
+async def get_nearest_station(
+    lat: float = Query(..., description="Latitude da localização de busca"),
+    lon: float = Query(..., description="Longitude da localização de busca"),
+    db: Session = Depends(get_db)
+):
+    """
+    Find the nearest physical weather station from our database.
+    Calculates geographic distance using Haversine formula.
+    """
+    station = weather_service.get_nearest_station(db, lat, lon)
+    if not station:
+        raise HTTPException(
+            status_code=404,
+            detail="Nenhuma estação meteorológica física cadastrada no banco de dados."
+        )
+    return station
+
+
+@router.get("/weather/source-comparison", response_model=SourceComparisonResponse)
+async def get_weather_source_comparison(
+    city: str = Query(..., min_length=2, description="Nome da cidade brasileira"),
+    start_date: str = Query(..., description="Data de início (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="Data final (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Compare daily meteorological records from Open-Meteo, NASA POWER,
+    and terrestrial INMET stations for a given Brazilian city and date range.
+    """
+    from datetime import datetime, timedelta
+    
+    # Validação de datas
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de data inválido. Use YYYY-MM-DD (Ex: 2026-06-01)."
+        )
+        
+    if start > end:
+        raise HTTPException(
+            status_code=400,
+            detail="A data de início não pode ser posterior à data final."
+        )
+        
+    # Limita a busca a pelo menos 4 dias atrás devido ao tempo de consolidação da NASA POWER
+    max_allowed = datetime.now() - timedelta(days=4)
+    if end > max_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="A data final deve ser de pelo menos 4 dias atrás para garantir consolidação da reanálise NASA POWER."
+        )
+
+    # 1. Resolve coordenadas da cidade
+    selected_city = await resolve_city(city, db)
+    
+    # 2. Verifica cache Redis
+    city_normalized = city.lower().strip()
+    cache_key = f"weather:comparison:{city_normalized}:{start_date}:{end_date}"
+    from app.services.cache import cache_service
+    cached_data = cache_service.get(cache_key)
+    if cached_data:
+        logger.info(f"Redis Cache hit for weather source comparison: '{cache_key}'")
+        return SourceComparisonResponse(**cached_data)
+
+    # 3. Processa a comparação científica de fontes
+    try:
+        comparison_result = await weather_service.compare_sources(
+            db=db,
+            city_name=selected_city.name,
+            lat=selected_city.latitude,
+            lon=selected_city.longitude,
+            start_date=start_date,
+            end_date=end_date
+        )
+    except Exception as e:
+        logger.error(f"Erro ao computar comparação de fontes climáticas: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Não foi possível processar a comparação científica entre as fontes climáticas."
+        )
+        
+    # 4. Salva no cache Redis por 4 horas (14400 segundos)
+    cache_service.set(cache_key, comparison_result, ttl=14400)
+    
+    return comparison_result
+

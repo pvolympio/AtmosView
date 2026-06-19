@@ -7,6 +7,20 @@ const api = axios.create({
   timeout: 15000,
 });
 
+// Interceptor para injetar o token JWT em todas as requisições
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export const weatherApi = {
   searchCities: async (name) => {
     try {
@@ -125,6 +139,142 @@ export const weatherApi = {
       return response.data;
     } catch (error) {
       console.error("Error calling get ML status API:", error);
+      throw error;
+    }
+  },
+
+  getWeatherSourceComparison: async (city, startDate, endDate) => {
+    try {
+      const response = await api.get(`/weather/source-comparison`, {
+        params: { city, start_date: startDate, end_date: endDate }
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error calling weather source comparison API:", error);
+      throw error;
+    }
+  },
+
+  getNearestStations: async (lat, lon) => {
+    try {
+      const response = await api.get(`/stations/nearest`, {
+        params: { lat, lon }
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error calling nearest station API:", error);
+      throw error;
+    }
+  },
+
+  // --- V5 AUTHENTICATION, FAVORITES, ALERTS & REPORTS ---
+  login: async (email, password) => {
+    try {
+      const response = await api.post(`/auth/login`, { email, password });
+      return response.data;
+    } catch (error) {
+      console.error("Error calling login API:", error);
+      throw error;
+    }
+  },
+
+  register: async (email, password, fullName) => {
+    try {
+      const response = await api.post(`/auth/register`, {
+        email,
+        password,
+        full_name: fullName
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error calling register API:", error);
+      throw error;
+    }
+  },
+
+  getCurrentUser: async () => {
+    try {
+      const response = await api.get(`/auth/me`);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling getCurrentUser API:", error);
+      throw error;
+    }
+  },
+
+  updateProfile: async (profileData) => {
+    try {
+      const response = await api.put(`/auth/profile`, profileData);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling updateProfile API:", error);
+      throw error;
+    }
+  },
+
+  getFavorites: async () => {
+    try {
+      const response = await api.get(`/auth/favorites`);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling getFavorites API:", error);
+      throw error;
+    }
+  },
+
+  addFavorite: async (cityData) => {
+    try {
+      const response = await api.post(`/auth/favorites`, cityData);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling addFavorite API:", error);
+      throw error;
+    }
+  },
+
+  deleteFavorite: async (id) => {
+    try {
+      const response = await api.delete(`/auth/favorites/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling deleteFavorite API:", error);
+      throw error;
+    }
+  },
+
+  getAlerts: async () => {
+    try {
+      const response = await api.get(`/auth/alerts`);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling getAlerts API:", error);
+      throw error;
+    }
+  },
+
+  createAlert: async (alertData) => {
+    try {
+      const response = await api.post(`/auth/alerts`, alertData);
+      return response.data;
+    } catch (error) {
+      console.error("Error calling createAlert API:", error);
+      throw error;
+    }
+  },
+
+  generateReport: async (city, reportType, period, data) => {
+    try {
+      const response = await api.post(`/reports/generate`, {
+        city,
+        report_type: reportType,
+        period,
+        data
+      }, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error calling generateReport API:", error);
       throw error;
     }
   }

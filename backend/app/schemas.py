@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 
 class CitySearchResult(BaseModel):
     name: str
@@ -206,4 +206,146 @@ class MLStatusResponse(BaseModel):
     models: List[MLModelStatus]
     has_trained_models: bool
     training_runs: int
+
+
+# Schemas para a V4 (Evolução Científica e Comparação de Fontes)
+
+class WeatherStationResponse(BaseModel):
+    id: str
+    name: str
+    state: str
+    latitude: float
+    longitude: float
+    altitude: Optional[float] = None
+    source: str
+    status: str
+    distance: Optional[float] = None  # Distância em km calculada dinamicamente
+
+    class Config:
+        from_attributes = True
+
+class ProviderMetadataResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    source_type: str
+    limitations: Optional[str] = None
+    data_coverage: str
+
+class DataQualityReportResponse(BaseModel):
+    missing_data_count: int
+    extreme_values_count: int
+    temporal_gaps: int
+    completeness_percentage: float
+    quality_grade: str
+    report_data: Any
+
+class SourceComparisonResponse(BaseModel):
+    city_name: str
+    latitude: float
+    longitude: float
+    start_date: str
+    end_date: str
+    nearest_station: Optional[WeatherStationResponse] = None
+    sources_data: Dict[str, Any]  # Contém histórico diário, estatísticas agregadas e relatório de qualidade por fonte
+    comparison_metrics: Dict[str, Any]  # Divergências de temperaturas e chuvas acumuladas
+    summary: str
+
+
+# Schemas para a V5 (Autenticação, Favoritos e Alertas)
+
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    full_name: Optional[str] = None
+    favorite_city: Optional[str] = None
+    temperature_unit: str
+    theme: str
+    
+    alert_temp_above: Optional[float] = None
+    alert_humidity_below: Optional[float] = None
+    alert_rain_above: Optional[float] = None
+    alert_wind_above: Optional[float] = None
+    alert_risk_level: Optional[str] = None
+    
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    favorite_city: Optional[str] = None
+    temperature_unit: Optional[str] = None
+    theme: Optional[str] = None
+    
+    alert_temp_above: Optional[float] = None
+    alert_humidity_below: Optional[float] = None
+    alert_rain_above: Optional[float] = None
+    alert_wind_above: Optional[float] = None
+    alert_risk_level: Optional[str] = None
+
+
+class UserFavoriteCreate(BaseModel):
+    city_name: str
+    latitude: float
+    longitude: float
+    state: Optional[str] = None
+    country: str = "Brasil"
+
+
+class UserFavoriteResponse(BaseModel):
+    id: int
+    user_id: int
+    city_name: str
+    latitude: float
+    longitude: float
+    state: Optional[str] = None
+    country: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WeatherAlertCreate(BaseModel):
+    city_name: str
+    alert_type: str
+    alert_value: float
+    measured_value: float
+    message: str
+
+
+class WeatherAlertResponse(BaseModel):
+    id: int
+    user_id: int
+    city_name: str
+    alert_type: str
+    alert_value: float
+    measured_value: float
+    message: str
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 

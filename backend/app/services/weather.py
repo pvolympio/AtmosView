@@ -318,4 +318,328 @@ class WeatherService:
             "period_b_avg_risk": round(avg_risk_b, 1)
         }
 
+    async def seed_stations(self, db: Any) -> int:
+        from app.models import WeatherStation
+        
+        # Verifica se já foi populado
+        if db.query(WeatherStation).count() > 0:
+            logger.info("Estações meteorológicas do INMET já cadastradas no banco de dados.")
+            return 0
+            
+        logger.info("Iniciando carga de estações meteorológicas do INMET...")
+        url = "https://apitempo.inmet.gov.br/estacoes/T"
+        
+        # Lista de capitais como fallback caso a API falhe ou demore
+        capitals_fallback = [
+            {"CD_ESTACAO": "A701", "DC_NOME": "SÃO PAULO - MIRANTE", "SG_ESTADO": "SP", "VL_LATITUDE": "-23.496294", "VL_LONGITUDE": "-46.620088", "VL_ALTITUDE": "792.06"},
+            {"CD_ESTACAO": "A602", "DC_NOME": "RIO DE JANEIRO - COPACABANA", "SG_ESTADO": "RJ", "VL_LATITUDE": "-22.988333", "VL_LONGITUDE": "-43.190556", "VL_ALTITUDE": "25.0"},
+            {"CD_ESTACAO": "A301", "DC_NOME": "RECIFE - CURADO", "SG_ESTADO": "PE", "VL_LATITUDE": "-8.058333", "VL_LONGITUDE": "-34.959167", "VL_ALTITUDE": "7.0"},
+            {"CD_ESTACAO": "A801", "DC_NOME": "PORTO ALEGRE", "SG_ESTADO": "RS", "VL_LATITUDE": "-30.05", "VL_LONGITUDE": "-51.166667", "VL_ALTITUDE": "46.86"},
+            {"CD_ESTACAO": "A001", "DC_NOME": "BRASILIA", "SG_ESTADO": "DF", "VL_LATITUDE": "-15.789444", "VL_LONGITUDE": "-47.925833", "VL_ALTITUDE": "1159.54"},
+            {"CD_ESTACAO": "A201", "DC_NOME": "FORTALEZA", "SG_ESTADO": "CE", "VL_LATITUDE": "-3.7225", "VL_LONGITUDE": "-38.543333", "VL_ALTITUDE": "26.0"},
+            {"CD_ESTACAO": "A502", "DC_NOME": "BELO HORIZONTE - PAMPULHA", "SG_ESTADO": "MG", "VL_LATITUDE": "-19.883889", "VL_LONGITUDE": "-43.968611", "VL_ALTITUDE": "854.87"},
+            {"CD_ESTACAO": "A307", "DC_NOME": "SALVADOR", "SG_ESTADO": "BA", "VL_LATITUDE": "-13.005", "VL_LONGITUDE": "-38.504722", "VL_ALTITUDE": "51.41"},
+            {"CD_ESTACAO": "A901", "DC_NOME": "MANAUS", "SG_ESTADO": "AM", "VL_LATITUDE": "-3.103333", "VL_LONGITUDE": "-60.016389", "VL_ALTITUDE": "72.0"}
+        ]
+        
+        stations_data = []
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                stations_data = response.json()
+                logger.info(f"Carregadas {len(stations_data)} estações do INMET via API.")
+            except Exception as e:
+                logger.warning(f"Falha na API de estações do INMET ({e}). Usando capitais de fallback.")
+                stations_data = capitals_fallback
+                
+        inserted_count = 0
+        db_stations = []
+        
+        for item in stations_data:
+            station_id = item.get("CD_ESTACAO")
+            name = item.get("DC_NOME")
+            state = item.get("SG_ESTADO")
+            lat_raw = item.get("VL_LATITUDE")
+            lon_raw = item.get("VL_LONGITUDE")
+            alt_raw = item.get("VL_ALTITUDE")
+            
+            if not station_id or not name or not state or lat_raw is None or lon_raw is None:
+                continue
+                
+            try:
+                lat = float(str(lat_raw).replace(",", "."))
+                lon = float(str(lon_raw).replace(",", "."))
+                alt = float(str(alt_raw).replace(",", ".")) if alt_raw is not None else None
+            except ValueError:
+                continue
+                
+            # Evita duplicidade
+            exists = db.query(WeatherStation).filter(WeatherStation.id == station_id).first()
+            if exists:
+                continue
+                
+            db_stations.append(WeatherStation(
+                id=station_id,
+                name=name,
+                state=state,
+                latitude=lat,
+                longitude=lon,
+                altitude=alt,
+                source="inmet",
+                status="Operante"
+            ))
+            inserted_count += 1
+            
+        if db_stations:
+            db.bulk_save_objects(db_stations)
+            db.commit()
+            logger.info(f"Carga de estações finalizada. {inserted_count} estações salvas no banco de dados.")
+        else:
+            logger.info("Nenhuma estação nova inserida.")
+            
+        return inserted_count
+
+    def calculate_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        import math
+        R = 6371.0  # Raio da Terra em km
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return round(R * c, 2)
+
+    def get_nearest_station(self, db: Any, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+        from app.models import WeatherStation
+        stations = db.query(WeatherStation).all()
+        if not stations:
+            return None
+            
+        nearest_station = None
+        min_distance = float('inf')
+        
+        for station in stations:
+            dist = self.calculate_distance(lat, lon, station.latitude, station.longitude)
+            if dist < min_distance:
+                min_distance = dist
+                nearest_station = station
+                
+        if nearest_station:
+            return {
+                "id": nearest_station.id,
+                "name": nearest_station.name,
+                "state": nearest_station.state,
+                "latitude": nearest_station.latitude,
+                "longitude": nearest_station.longitude,
+                "altitude": nearest_station.altitude,
+                "source": nearest_station.source,
+                "status": nearest_station.status,
+                "distance": min_distance
+            }
+        return None
+
+    async def compare_sources(self, db: Any, city_name: str, lat: float, lon: float, start_date: str, end_date: str) -> Dict[str, Any]:
+        from app.weather_providers import get_provider
+        from app.services.data_quality_service import data_quality_service
+        from app.models import SourceComparison, DataQualityReport
+        
+        # 1. Encontra a estação INMET física mais próxima
+        nearest_station = self.get_nearest_station(db, lat, lon)
+        
+        active_providers = ["open_meteo", "nasa_power"]
+        if nearest_station:
+            active_providers.append("inmet")
+            
+        sources_data = {}
+        
+        # 2. Reúne dados diários e avalia qualidade para cada fonte
+        for provider_id in active_providers:
+            provider = get_provider(provider_id)
+            metadata = provider.get_metadata()
+            
+            try:
+                # InmetProvider usa as coordenadas e resolve a mais próxima internamente (que bate com a resolvida aqui)
+                daily_records = await provider.get_historical_data(lat, lon, start_date, end_date)
+            except Exception as e:
+                logger.error(f"Erro ao obter dados do provedor {provider_id}: {e}")
+                daily_records = []
+                
+            # Avaliação de qualidade
+            quality_report = data_quality_service.evaluate_dataset(
+                records=daily_records,
+                start_date=start_date,
+                end_date=end_date,
+                source_name=metadata["name"]
+            )
+            
+            # Grava relatório de qualidade
+            try:
+                db_report = DataQualityReport(
+                    city_name=city_name,
+                    source=provider_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    missing_data_count=quality_report["missing_data_count"],
+                    extreme_values_count=quality_report["extreme_values_count"],
+                    temporal_gaps=quality_report["temporal_gaps"],
+                    completeness_percentage=quality_report["completeness_percentage"],
+                    quality_grade=quality_report["quality_grade"],
+                    report_data=quality_report["report_data"]
+                )
+                db.add(db_report)
+                db.commit()
+            except Exception as ex:
+                db.rollback()
+                logger.error(f"Erro ao salvar relatório de qualidade no banco para {provider_id}: {ex}")
+                
+            # Estatísticas rápidas
+            avg_temp = 0.0
+            total_rain = 0.0
+            max_wind = 0.0
+            valid_temps = [r["mean_temp"] for r in daily_records if r.get("mean_temp") is not None]
+            valid_rains = [r["rain"] for r in daily_records if r.get("rain") is not None]
+            valid_winds = [r["wind_max"] for r in daily_records if r.get("wind_max") is not None]
+            
+            if valid_temps:
+                avg_temp = round(sum(valid_temps) / len(valid_temps), 2)
+            if valid_rains:
+                total_rain = round(sum(valid_rains), 2)
+            if valid_winds:
+                max_wind = round(max(valid_winds), 2)
+                
+            sources_data[provider_id] = {
+                "metadata": metadata,
+                "daily_data": daily_records,
+                "quality_report": quality_report,
+                "stats": {
+                    "avg_temp": avg_temp,
+                    "total_rain": total_rain,
+                    "max_wind": max_wind,
+                    "available_days": len(daily_records)
+                }
+            }
+            
+        # 3. Calcula divergências comparativas
+        comparison_metrics = {}
+        
+        # Open-Meteo vs NASA POWER
+        if "open_meteo" in sources_data and "nasa_power" in sources_data and sources_data["nasa_power"]["daily_data"]:
+            om_s = sources_data["open_meteo"]["stats"]
+            np_s = sources_data["nasa_power"]["stats"]
+            
+            diff_temp = round(abs(om_s["avg_temp"] - np_s["avg_temp"]), 2)
+            div_temp_pct = round((diff_temp / max(abs(om_s["avg_temp"]), 1.0)) * 100, 2)
+            
+            diff_rain = round(abs(om_s["total_rain"] - np_s["total_rain"]), 2)
+            div_rain_pct = round((diff_rain / max(om_s["total_rain"], np_s["total_rain"], 1.0)) * 100, 2)
+            
+            diff_wind = round(abs(om_s["max_wind"] - np_s["max_wind"]), 2)
+            div_wind_pct = round((diff_wind / max(om_s["max_wind"], np_s["max_wind"], 1.0)) * 100, 2)
+            
+            comparison_metrics["open_meteo_vs_nasa_power"] = {
+                "diff_temp": diff_temp,
+                "div_temp_pct": div_temp_pct,
+                "diff_rain": diff_rain,
+                "div_rain_pct": div_rain_pct,
+                "diff_wind": diff_wind,
+                "div_wind_pct": div_wind_pct
+            }
+            
+        # Open-Meteo vs INMET
+        if "open_meteo" in sources_data and "inmet" in sources_data and sources_data["inmet"]["daily_data"]:
+            om_s = sources_data["open_meteo"]["stats"]
+            in_s = sources_data["inmet"]["stats"]
+            
+            diff_temp = round(abs(om_s["avg_temp"] - in_s["avg_temp"]), 2)
+            div_temp_pct = round((diff_temp / max(abs(om_s["avg_temp"]), 1.0)) * 100, 2)
+            
+            diff_rain = round(abs(om_s["total_rain"] - in_s["total_rain"]), 2)
+            div_rain_pct = round((diff_rain / max(om_s["total_rain"], in_s["total_rain"], 1.0)) * 100, 2)
+            
+            diff_wind = round(abs(om_s["max_wind"] - in_s["max_wind"]), 2)
+            div_wind_pct = round((diff_wind / max(om_s["max_wind"], in_s["max_wind"], 1.0)) * 100, 2)
+            
+            comparison_metrics["open_meteo_vs_inmet"] = {
+                "diff_temp": diff_temp,
+                "div_temp_pct": div_temp_pct,
+                "diff_rain": diff_rain,
+                "div_rain_pct": div_rain_pct,
+                "diff_wind": diff_wind,
+                "div_wind_pct": div_wind_pct
+            }
+            
+        # 4. Gera resumo
+        summary = self._generate_scientific_summary(city_name, start_date, end_date, sources_data, comparison_metrics, nearest_station)
+        
+        result_payload = {
+            "city_name": city_name,
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": start_date,
+            "end_date": end_date,
+            "nearest_station": nearest_station,
+            "sources_data": sources_data,
+            "comparison_metrics": comparison_metrics,
+            "summary": summary
+        }
+        
+        # 5. Salva comparação no banco de dados para histórico
+        try:
+            db_comparison = SourceComparison(
+                city_name=city_name,
+                latitude=lat,
+                longitude=lon,
+                start_date=start_date,
+                end_date=end_date,
+                comparison_data=result_payload
+            )
+            db.add(db_comparison)
+            db.commit()
+        except Exception as ex:
+            db.rollback()
+            logger.error(f"Erro ao salvar SourceComparison audit log: {ex}")
+            
+        return result_payload
+
+    def _generate_scientific_summary(self, city_name: str, start_date: str, end_date: str, sources_data: Dict[str, Any], comparison_metrics: Dict[str, Any], nearest_station: Optional[Dict[str, Any]]) -> str:
+        summary_lines = [
+            f"Análise comparativa científica para {city_name} de {start_date} a {end_date}."
+        ]
+        
+        if nearest_station:
+            dist = nearest_station.get("distance", 0.0)
+            summary_lines.append(
+                f"A estação oficial de solo mais próxima do INMET é a '{nearest_station['name']}' ({nearest_station['id']}), distante {dist:.1f} km."
+            )
+        else:
+            summary_lines.append("Nenhuma estação física terrestre do INMET foi detectada no banco de dados para fins de comparação local.")
+            
+        if "open_meteo_vs_nasa_power" in comparison_metrics:
+            om_np = comparison_metrics["open_meteo_vs_nasa_power"]
+            summary_lines.append(
+                f"Entre as fontes baseadas em modelos e satélites (Open-Meteo vs NASA POWER), houve uma divergência de {om_np['diff_temp']}°C "
+                f"({om_np['div_temp_pct']}%) em temperatura média e de {om_np['diff_rain']} mm ({om_np['div_rain_pct']}%) no acumulado de chuvas."
+            )
+            
+        if "open_meteo_vs_inmet" in comparison_metrics:
+            om_in = comparison_metrics["open_meteo_vs_inmet"]
+            grade = sources_data["inmet"]["quality_report"]["quality_grade"]
+            completeness = sources_data["inmet"]["quality_report"]["completeness_percentage"]
+            summary_lines.append(
+                f"Na comparação direta com a estação de solo do INMET, os desvios do Open-Meteo foram de {om_in['diff_temp']}°C "
+                f"e {om_in['diff_rain']} mm. O INMET teve uma qualidade classificada como '{grade}' (completude de {completeness}%)."
+            )
+            
+        # Comentário de consistência
+        if "open_meteo_vs_inmet" in comparison_metrics and "open_meteo_vs_nasa_power" in comparison_metrics:
+            div_in = comparison_metrics["open_meteo_vs_inmet"]["div_temp_pct"]
+            div_np = comparison_metrics["open_meteo_vs_nasa_power"]["div_temp_pct"]
+            if div_in > 15.0 or div_np > 15.0:
+                summary_lines.append("Nota-se uma divergência estatística significativa entre as fontes, o que sugere instabilidade climatológica local ou microclimas de relevo acidentado.")
+            else:
+                summary_lines.append("As fontes meteorológicas apresentaram boa correlação e consistência estatística mútua para o período.")
+                
+        return " ".join(summary_lines)
+
 weather_service = WeatherService()
+

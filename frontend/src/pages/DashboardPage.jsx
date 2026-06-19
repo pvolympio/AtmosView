@@ -14,7 +14,7 @@ import {
   Thermometer, Droplets, Wind, CloudRain, Gauge, Activity 
 } from 'lucide-react';
 
-const DashboardPage = ({ data, onSearchNewCity }) => {
+const DashboardPage = ({ data, onSearchNewCity, user, isFavorite, onToggleFavorite }) => {
   const { current, risk, summary, daily } = data;
 
   return (
@@ -34,6 +34,9 @@ const DashboardPage = ({ data, onSearchNewCity }) => {
         longitude={data.longitude}
         observationTime={current.observation_time}
         weatherCode={current.weather_code}
+        user={user}
+        isFavorite={isFavorite}
+        onToggleFavorite={onToggleFavorite}
       />
 
       {/* Climate summary text */}

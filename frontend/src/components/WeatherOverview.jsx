@@ -1,9 +1,9 @@
 import React from 'react';
-import { MapPin, Clock } from 'lucide-react';
+import { MapPin, Clock, Star } from 'lucide-react';
 import { getWeatherCondition } from '../utils/weatherUtils';
 
 
-const WeatherOverview = ({ cityName, state, country, latitude, longitude, observationTime, weatherCode }) => {
+const WeatherOverview = ({ cityName, state, country, latitude, longitude, observationTime, weatherCode, user, isFavorite, onToggleFavorite }) => {
   const condition = getWeatherCondition(weatherCode);
   const ConditionIcon = condition.icon;
 
@@ -27,14 +27,29 @@ const WeatherOverview = ({ cityName, state, country, latitude, longitude, observ
           <MapPin size={18} />
           <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Cidade Analisada</span>
         </div>
-        <h2 className="text-2xl font-black text-white flex items-baseline gap-2">
-          {cityName}
-          {(state || country) && (
-            <span className="text-slate-400 font-bold text-sm">
-              ({state ? `${state}, ` : ''}{country})
-            </span>
+        <div className="flex items-center flex-wrap gap-2">
+          <h2 className="text-2xl font-black text-white flex items-baseline gap-2">
+            {cityName}
+            {(state || country) && (
+              <span className="text-slate-400 font-bold text-sm">
+                ({state ? `${state}, ` : ''}{country})
+              </span>
+            )}
+          </h2>
+          {user && (
+            <button
+              onClick={onToggleFavorite}
+              className={`p-1.5 rounded-xl border transition-all ${
+                isFavorite 
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                  : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-amber-400 hover:border-amber-550/30'
+              }`}
+              title={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+            >
+              <Star size={14} className={isFavorite ? "fill-amber-400" : ""} />
+            </button>
           )}
-        </h2>
+        </div>
         <div className="text-slate-500 font-medium text-xs">
           Latitude: <span className="text-slate-400">{latitude.toFixed(4)}</span> • Longitude: <span className="text-slate-400">{longitude.toFixed(4)}</span>
         </div>
